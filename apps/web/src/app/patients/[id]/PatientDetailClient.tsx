@@ -32,8 +32,14 @@ import {
   usePatientDetail,
   useAllergyForm,
   useAiSummary,
+  EMERGENCY_ACCESS_REQUIRED,
   type Allergy,
 } from '@/hooks/usePatientDetail';
+import {
+  EmergencyAccessBanner,
+  EmergencyAccessGate,
+  useEmergencyAccess,
+} from '@/components/patients/EmergencyAccess';
 import { ConsentTab } from '@/components/patients/ConsentTab';
 import { InsuranceTab } from '@/components/patients/InsuranceTab';
 import { HealthLogTab } from '@/components/patients/HealthLogTab';
@@ -162,6 +168,7 @@ export default function PatientDetailClient({
     invalidatePayments,
   } = usePatientDetail(patientId);
 
+  const { data: emergencyGrant } = useEmergencyAccess(patientId);
   const allergyState = useAllergyForm(patientId, refetchAllergies);
   const aiState = useAiSummary(encounters);
 
@@ -200,6 +207,14 @@ export default function PatientDetailClient({
   }
 
   if (patientError) {
+    // #1493 — outside the care team: offer break-the-glass emergency access
+    if (patientError instanceof Error && patientError.message === EMERGENCY_ACCESS_REQUIRED) {
+      return (
+        <PageWrapper className="py-8">
+          <EmergencyAccessGate patientId={patientId} onGranted={invalidatePatient} />
+        </PageWrapper>
+      );
+    }
     const is404 = patientError instanceof Error && patientError.message === '404';
     if (is404) {
       return (
@@ -232,6 +247,10 @@ export default function PatientDetailClient({
     <PageWrapper className="py-8">
       {activeToast && (
         <Toast message={activeToast.message} type={activeToast.type} onClose={clearToast} />
+      )}
+
+      {emergencyGrant?.isActive && (
+        <EmergencyAccessBanner patientId={patientId} grant={emergencyGrant} />
       )}
 
       {/* Breadcrumb */}

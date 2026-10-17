@@ -100,6 +100,11 @@ export const refreshSchema = z.object({
   refreshToken: z.string().min(1),
 });
 
+/** "This wasn't me" link from a new-device sign-in alert (#1497) */
+export const loginAlertRevokeSchema = z.object({
+  token: z.string().regex(/^[a-f0-9]{64}$/, 'Invalid token'),
+});
+
 export const mfaVerifySchema = z.object({
   totp: z.string().length(6),
 });

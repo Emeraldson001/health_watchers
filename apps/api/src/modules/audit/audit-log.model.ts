@@ -1,4 +1,5 @@
 import { Schema, model, models } from 'mongoose';
+import { auditHashChainPlugin } from './audit-chain.plugin';
 
 export type AuditAction = 'READ' | 'CREATE' | 'UPDATE' | 'DELETE';
 export type AuditResourceType = 'Patient' | 'Encounter' | 'Payment';
@@ -30,6 +31,9 @@ const auditLogSchema = new Schema<AuditLog>(
     versionKey: false,
   }
 );
+
+// Tamper evidence: per-clinic SHA-256 hash chain (#1494)
+auditLogSchema.plugin(auditHashChainPlugin);
 
 export const AuditLogModel = (models.AuditLog ||
   model<AuditLog>('AuditLog', auditLogSchema)) as import('mongoose').Model<AuditLog>;
