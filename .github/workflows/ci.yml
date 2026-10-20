@@ -815,6 +815,114 @@ jobs:
           path: apps/web/e2e/snapshots/
           retention-days: 14
 
+  # Stage 5c: Visual Regression Gate (blocking)
+  # Runs the focused visual-regression.spec.ts suite and FAILS the build on any
+  # visual regression. Unlike Stage 5b (informational, multi-browser across the
+  # full app), this job compares the core UI design-system pages against the
+  # committed baselines and blocks the PR. Baselines live in version control at
+  # apps/web/e2e/visual-regression.spec.ts-snapshots/ — see VISUAL_REGRESSION.md.
+  visual-regression-gate:
+    name: Visual Regression Gate (blocking)
+    runs-on: ubuntu-latest
+    needs: [build]
+    timeout-minutes: 15
+
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+
+      - name: Start API server
+        run: npm run dev --workspace=api &
+        env:
+          MONGO_URI: mongodb://localhost:27017/health_watchers_visual_gate
+          JWT_ACCESS_TOKEN_SECRET: visual-gate-access-secret-32-chars-long!
+          JWT_REFRESH_TOKEN_SECRET: visual-gate-refresh-secret-32-chars!
+          STELLAR_NETWORK: testnet
+          NODE_ENV: development
+          PORT: 3001
+
+      - name: Seed test data
+        run: npm run seed || echo "Seed script not found, skipping"
+        env:
+          MONGO_URI: mongodb://localhost:27017/health_watchers_visual_gate
+
+      - name: Start web server
+        run: npm run dev --workspace=web &
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+          NEXT_PUBLIC_STELLAR_NETWORK: testnet
+
+      - name: Wait for servers
+        run: npx wait-on http://localhost:3001/health http://localhost:3000 --timeout 60000
+
+      # Compare against committed baselines. Fails on any visual regression.
+      - name: Run visual regression gate
+        run: npm run test:visual:gate --workspace=web
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+          E2E_DOCTOR_EMAIL: ${{ secrets.E2E_DOCTOR_EMAIL }}
+          E2E_DOCTOR_PASSWORD: ${{ secrets.E2E_DOCTOR_PASSWORD }}
+
+      # Playwright creates a missing baseline (and passes) on first run. Detect
+      # untracked/modified baselines and fail so they are committed to version
+      # control rather than silently regenerated on every CI run.
+      - name: Fail if baselines are missing or changed
+        if: always()
+        working-directory: apps/web
+        run: |
+          CHANGES=$(git status --porcelain e2e/visual-regression.spec.ts-snapshots)
+          if [ -n "$CHANGES" ]; then
+            echo "::error::Visual regression baselines are missing or changed."
+            echo "Playwright generated new/updated baseline snapshots that are not committed."
+            echo "Run locally, review the diffs, then commit the updated baselines:"
+            echo "  npm run test:visual:gate:update --workspace=web"
+            echo "  git add apps/web/e2e/visual-regression.spec.ts-snapshots"
+            echo "  git commit -m 'chore: update visual regression baselines'"
+            echo ""
+            echo "Changed files:"
+            echo "$CHANGES"
+            exit 1
+          fi
+
+      - name: Upload visual regression gate report
+        if: always()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: visual-regression-gate-report
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      # On main, upload any regenerated baselines so they can be downloaded and committed.
+      - name: Upload regenerated baselines (main branch only)
+        if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: visual-regression-gate-baselines
+          path: apps/web/e2e/visual-regression.spec.ts-snapshots/
+          retention-days: 14
+          if-no-files-found: ignore
+
   # Stage 6: Deploy (main branch only)
   deploy-staging:
     name: Deploy to Staging

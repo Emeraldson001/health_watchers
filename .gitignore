@@ -81,6 +81,12 @@ blob-report/
 playwright/.cache/
 .playwright/
 
+# NOTE: Playwright visual-regression baseline screenshots live in
+# `<specfile>-snapshots/` directories (e.g. apps/web/e2e/visual-regression.spec.ts-snapshots/).
+# These golden baselines are intentionally NOT ignored — they are committed to
+# version control as the reference for visual regression tests. Only the
+# `**/__snapshots__/` (Jest) pattern above is ignored.
+
 # Stryker mutation testing output
 .stryker-tmp/
 stryker-report/
