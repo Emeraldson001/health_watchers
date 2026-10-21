@@ -450,6 +450,57 @@ jobs:
           NODE_ENV: test
           API_PORT: 3001
 
+      # Generate coverage reports for SonarCloud
+      - name: Generate coverage reports
+        run: |
+          npm run test:coverage --workspace=api
+          npm run test:coverage --workspace=stellar-service
+        env:
+          JWT_ACCESS_TOKEN_SECRET: test-access-secret-32-chars-long!!
+          JWT_REFRESH_TOKEN_SECRET: test-refresh-secret-32-chars-long!
+          STELLAR_NETWORK: testnet
+          NODE_ENV: test
+
+      # Verify coverage reports exist
+      - name: Verify LCOV reports
+        run: |
+          echo "Checking for coverage reports..."
+          if [ ! -f apps/api/coverage/lcov.info ]; then
+            echo "❌ Missing API coverage report"
+            exit 1
+          fi
+          if [ ! -f apps/stellar-service/coverage/lcov.info ]; then
+            echo "❌ Missing Stellar service coverage report"
+            exit 1
+          fi
+          echo "✅ All coverage reports found"
+          ls -lh apps/api/coverage/lcov.info
+          ls -lh apps/stellar-service/coverage/lcov.info
+
+      # Upload coverage to SonarCloud
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@b0e35f6b3cc04ac0e43a1e559ab5ed96fb7840bf # v3.1.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.organization=jerryvic911
+            -Dsonar.projectKey=Health-watchers_health_watchers
+            -Dsonar.javascript.lcov.reportPaths=apps/api/coverage/lcov.info,apps/stellar-service/coverage/lcov.info
+            -Dsonar.coverage.exclusions=**/*.test.ts,**/*.spec.ts,**/migrations/**,**/__tests__/**,**/__mocks__/**
+
+      # Upload coverage artifacts for debugging
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: coverage-reports
+          path: |
+            apps/api/coverage/
+            apps/stellar-service/coverage/
+          retention-days: 14
+
       - name: Verify API security headers
         if: github.event_name == 'push' || contains(github.event.pull_request.changed_files, 'apps/api')
         run: npm test --workspace=api -- --runInBand src/__tests__/security-headers.test.ts

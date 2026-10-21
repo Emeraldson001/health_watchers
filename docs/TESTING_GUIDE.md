@@ -448,6 +448,87 @@ CI enforces these targets. Pull requests that reduce coverage below the threshol
 
 ---
 
+## Mutation Testing
+
+Mutation testing measures test suite quality by introducing deliberate bugs ("mutants") and checking if tests catch them. This validates that tests actually detect regressions, not just execute code.
+
+### Running Mutation Tests
+
+```bash
+# Full mutation test suite (auth module focus)
+npm run test:mutation --workspace=api
+
+# Analyze results
+npm run test:mutation:analyze --workspace=api
+
+# With custom threshold
+npm run test:mutation:analyze --workspace=api -- --threshold 80
+```
+
+### Auth Module Mutation Score Requirements
+
+The auth module is security-critical and must maintain a **minimum 80% mutation score**:
+
+- JWT signing and verification logic
+- Password hashing and comparison  
+- MFA validation (TOTP, backup codes)
+- Token rotation and denylist operations
+- Session management
+
+### Current Mutation Score
+
+Run the mutation tests to see current scores per file:
+
+```bash
+npm run test:mutation --workspace=api
+# Opens HTML report: apps/api/reports/mutation/mutation.html
+```
+
+### Interpreting Mutation Results
+
+| Status | Meaning |
+|--------|---------|
+| **Killed** | Test failed when mutant was active ✅ |
+| **Survived** | No test detected the change ❌ — test gap! |
+| **NoCoverage** | Code not executed by any test ⚠️ |
+| **Timeout** | Test timed out (counted as killed) |
+
+### Fixing Surviving Mutants
+
+1. Open `apps/api/reports/mutation/mutation.html` in browser
+2. Find surviving mutants (red indicators with file and line number)
+3. Write tests that would fail if that specific mutation existed
+4. Re-run mutation tests to verify mutant is now killed
+
+**Example:** If a `ConditionalExpression` mutant survives on `if (count > 0)`:
+- Add test case where `count === 0` (boundary)
+- Add test case where `count > 0` 
+- Assert different behavior in each case
+- Ensure the condition is actually necessary
+
+Common mutant types and fixes:
+
+| Mutant Type | Fix Strategy |
+|-------------|-------------|
+| `ConditionalExpression` | Test both sides of boundary |
+| `EqualityOperator` | Test `===` vs `!==` explicitly |
+| `LogicalOperator` (`&&`/`\|\|`) | Test where only one operand is true |
+| `ArithmeticOperator` | Assert exact computed values |
+| `BooleanLiteral` | Flip boolean and assert different behavior |
+
+### CI Enforcement
+
+- **PR checks**: Mutation tests run on auth module changes, must score ≥80%
+- **Weekly full run**: Every Monday at 2 AM UTC, full auth module scan
+- **Automated alerts**: GitHub issue created if weekly score drops below 80%
+
+For detailed mutation testing workflows and best practices, see:
+- `apps/api/docs/mutation-testing.md` — Complete guide
+- `apps/api/docs/mutation-best-practices.md` — Pattern catalog
+- `apps/api/docs/mutation-score-tracking.md` — Score history
+
+---
+
 ## CI Testing
 
 Tests run automatically on every push and pull request via `.github/workflows/ci.yml`.
